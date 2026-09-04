@@ -1,7 +1,9 @@
-// Minimal app-shell cache so the app opens instantly. Not a full
-// offline solution — logging still requires a network connection to
-// reach the Google Sheet.
-const CACHE_NAME = "grill-tracker-v1";
+// App-shell cache so the app opens fast and still works with a brief
+// connection drop. Network-first: always prefers the latest deployed
+// files when online, and only falls back to the cached copy if the
+// network request fails — so a new deploy shows up immediately instead
+// of being stuck behind a stale cache.
+const CACHE_NAME = "grill-tracker-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,7 +29,16 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  if (new URL(event.request.url).origin !== location.origin) return;
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
