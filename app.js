@@ -3,10 +3,6 @@
 // apps-script/Code.gs (see README.md for step-by-step instructions).
 const CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbx4Iupr99k51a_-sqK5mAF4qmgNp3r1FuEa2XMwPQiisqqQ3IKCcTGjxD5BQ2IEGEo1fA/exec",
-  // Sent with every request to the Apps Script backend; Code.gs rejects
-  // anything that doesn't match. Keeps someone from writing to the Sheet
-  // by hitting the backend URL directly, bypassing the app entirely.
-  secret: "192e676b3ace86622e6c03fc5bb17d97",
 };
 
 const APP_PIN = "1855";
@@ -302,7 +298,7 @@ async function postToSheet(action, payload) {
     method: "POST",
     mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, secret: CONFIG.secret, ...payload }),
+    body: JSON.stringify({ action, ...payload }),
   });
 }
 

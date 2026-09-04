@@ -86,25 +86,12 @@ Have your boss do this once, on his own device:
 
 ## Access control
 
-Two layers keep randos from adding junk entries:
-
-- **PIN lock** (`APP_PIN` in `app.js`, currently `1855`) — the app is
-  unusable until the right PIN is entered. Change it any time by editing
-  that constant.
-- **Shared secret** (`CONFIG.secret` in `app.js`, must match
-  `SHARED_SECRET` in `apps-script/Code.gs`) — every request to the
-  Google Sheet backend carries this, and the backend silently rejects
-  anything that doesn't match. This stops someone from writing to the
-  Sheet by hitting the Apps Script URL directly, without ever opening
-  the app.
-
-Neither is bulletproof against someone determined enough to read the
-app's JavaScript source (both values are visible there — there's no way
-around that for a pure client-side app without a real login system), but
-together they stop casual/accidental access, which is what this is for.
-
-**If you change the secret**, update it in *both* files and redeploy the
-Apps Script (see the note at the bottom) — they have to match exactly.
+**PIN lock** (`APP_PIN` in `app.js`, currently `1855`) — the app is
+unusable until the right PIN is entered. Change it any time by editing
+that constant. Not bulletproof against someone determined enough to
+read the app's JavaScript source (there's no way around that for a
+pure client-side app without a real login system), but it stops
+casual/accidental access, which is what this is for.
 
 ## Notes
 
