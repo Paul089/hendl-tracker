@@ -18,6 +18,10 @@ const SHEET_NAME = "Log";
 // Columns: Date | Time | Type | Quantity | ID
 const ID_COLUMN = 5;
 
+// Must match CONFIG.secret in app.js. Rejects anyone hitting this URL
+// directly without going through the app.
+const SHARED_SECRET = "192e676b3ace86622e6c03fc5bb17d97";
+
 function doPost(e) {
   // Serialize concurrent requests so two near-simultaneous taps can't
   // both read the same "last row" and clobber each other.
@@ -25,8 +29,14 @@ function doPost(e) {
   lock.waitLock(10000);
 
   try {
-    const sheet = getLogSheet_();
     const data = JSON.parse(e.postData.contents);
+    if (data.secret !== SHARED_SECRET) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: false, error: "unauthorized" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const sheet = getLogSheet_();
 
     if (data.action === "delete") {
       deleteRowById_(sheet, data.id);

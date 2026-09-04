@@ -74,13 +74,37 @@ Have your boss do this once, on his own device:
 
 ## Using it
 
+- On first open (per device), enter the **PIN: `1855`**. It's remembered
+  after that, so it only needs entering once per phone/tablet.
 - Tap **Hendl** or **Ente**.
 - Type the quantity on the number pad (e.g. `20`).
 - Tap **Confirm**. A row is saved to the Google Sheet with the current
-  date and time, and the on-screen "today" totals update.
-- Made a mistake? Tap the **✕** next to the entry in the "Recent
-  entries" list, confirm, and it's removed from both the app and the
+  date and time, and the on-screen "heute" totals update.
+- Made a mistake? Tap the **✕** next to the entry in the "Letzte
+  Einträge" list, confirm, and it's removed from both the app and the
   Google Sheet.
+
+## Access control
+
+Two layers keep randos from adding junk entries:
+
+- **PIN lock** (`APP_PIN` in `app.js`, currently `1855`) — the app is
+  unusable until the right PIN is entered. Change it any time by editing
+  that constant.
+- **Shared secret** (`CONFIG.secret` in `app.js`, must match
+  `SHARED_SECRET` in `apps-script/Code.gs`) — every request to the
+  Google Sheet backend carries this, and the backend silently rejects
+  anything that doesn't match. This stops someone from writing to the
+  Sheet by hitting the Apps Script URL directly, without ever opening
+  the app.
+
+Neither is bulletproof against someone determined enough to read the
+app's JavaScript source (both values are visible there — there's no way
+around that for a pure client-side app without a real login system), but
+together they stop casual/accidental access, which is what this is for.
+
+**If you change the secret**, update it in *both* files and redeploy the
+Apps Script (see the note at the bottom) — they have to match exactly.
 
 ## Notes
 

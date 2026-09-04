@@ -248,6 +248,23 @@ html, body {
   gap: 10px;
 }
 
+.pin-display {
+  letter-spacing: 0.4em;
+  padding-left: calc(10px + 0.4em);
+}
+
+.pin-error {
+  text-align: center;
+  color: #e0a34a;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: -6px;
+}
+
+.pin-error.hidden {
+  visibility: hidden;
+}
+
 .key {
   aspect-ratio: 1.4 / 1;
   font-size: min(7vw, 30px);

@@ -3,7 +3,14 @@
 // apps-script/Code.gs (see README.md for step-by-step instructions).
 const CONFIG = {
   scriptUrl: "https://script.google.com/macros/s/AKfycbx4Iupr99k51a_-sqK5mAF4qmgNp3r1FuEa2XMwPQiisqqQ3IKCcTGjxD5BQ2IEGEo1fA/exec",
+  // Sent with every request to the Apps Script backend; Code.gs rejects
+  // anything that doesn't match. Keeps someone from writing to the Sheet
+  // by hitting the backend URL directly, bypassing the app entirely.
+  secret: "192e676b3ace86622e6c03fc5bb17d97",
 };
+
+const APP_PIN = "1855";
+const PIN_UNLOCK_KEY = "grillTracker.pinUnlocked";
 
 // ---- State -----------------------------------------------------------
 const STORAGE_KEY = "grillTracker.entries";
@@ -12,10 +19,14 @@ const SYNC_INTERVAL_MS = 15000;
 
 let pendingType = null;
 let keypadValue = "";
+let pinValue = "";
 let confirmingDeleteId = null;
 let confirmDeleteTimer = null;
 
 const els = {
+  pinOverlay: document.getElementById("pin-overlay"),
+  pinDisplay: document.getElementById("pin-display"),
+  pinError: document.getElementById("pin-error"),
   keypadOverlay: document.getElementById("keypad-overlay"),
   keypadDisplay: document.getElementById("keypad-display"),
   keypadTitle: document.getElementById("keypad-title"),
@@ -28,6 +39,40 @@ const els = {
   toast: document.getElementById("toast"),
   syncStatus: document.getElementById("sync-status"),
 };
+
+// ---- PIN lock ----------------------------------------------------------
+if (localStorage.getItem(PIN_UNLOCK_KEY) === "true") {
+  els.pinOverlay.classList.add("hidden");
+}
+
+function updatePinDisplay() {
+  els.pinDisplay.textContent = "•".repeat(pinValue.length) + "-".repeat(4 - pinValue.length);
+}
+
+document.querySelectorAll("#pin-overlay .key").forEach((key) => {
+  key.addEventListener("click", () => {
+    const k = key.dataset.key;
+    if (k === "clear") pinValue = "";
+    else if (k === "back") pinValue = pinValue.slice(0, -1);
+    else if (pinValue.length < 4) pinValue += k;
+
+    updatePinDisplay();
+    els.pinError.classList.add("hidden");
+
+    if (pinValue.length === 4) {
+      if (pinValue === APP_PIN) {
+        localStorage.setItem(PIN_UNLOCK_KEY, "true");
+        els.pinOverlay.classList.add("hidden");
+      } else {
+        els.pinError.classList.remove("hidden");
+        setTimeout(() => {
+          pinValue = "";
+          updatePinDisplay();
+        }, 500);
+      }
+    }
+  });
+});
 
 const EMOJI = { hendl: "🐔", ente: "🦆" };
 
@@ -161,7 +206,7 @@ document.querySelectorAll(".animal-btn").forEach((btn) => {
   });
 });
 
-document.querySelectorAll(".key").forEach((key) => {
+document.querySelectorAll("#keypad-overlay .key").forEach((key) => {
   key.addEventListener("click", () => {
     const k = key.dataset.key;
     if (k === "clear") {
@@ -257,7 +302,7 @@ async function postToSheet(action, payload) {
     method: "POST",
     mode: "no-cors",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, secret: CONFIG.secret, ...payload }),
   });
 }
 
