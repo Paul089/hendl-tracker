@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Grill Tracker">
+<meta name="theme-color" content="#1b1f27">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<title>Grill Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main id="main-screen">
+  <div class="buttons">
+    <button class="animal-btn hendl" data-type="hendl" data-label="Hendl">
+      <span class="emoji">🐔</span>
+      <span class="label">Hendl</span>
+    </button>
+    <button class="animal-btn ente" data-type="ente" data-label="Ente">
+      <span class="emoji">🦆</span>
+      <span class="label">Ente</span>
+    </button>
+  </div>
+
+  <section class="summary">
+    <div class="summary-card">
+      <span class="summary-emoji">🐔</span>
+      <span id="total-hendl" class="summary-total">0</span>
+      <span class="summary-label">today</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-emoji">🦆</span>
+      <span id="total-ente" class="summary-total">0</span>
+      <span class="summary-label">today</span>
+    </div>
+  </section>
+
+  <div id="sync-status" class="sync-status">✓ Synced to Sheet</div>
+
+  <section class="recent">
+    <h2>Recent entries</h2>
+    <ul id="recent-list"></ul>
+  </section>
+</main>
+
+<div id="keypad-overlay" class="overlay hidden">
+  <div class="keypad-panel">
+    <div class="keypad-header">
+      <span id="keypad-emoji" class="keypad-emoji"></span>
+      <span id="keypad-title">Hendl</span>
+    </div>
+    <div id="keypad-display" class="keypad-display">0</div>
+    <div class="keypad-grid">
+      <button class="key" data-key="1">1</button>
+      <button class="key" data-key="2">2</button>
+      <button class="key" data-key="3">3</button>
+      <button class="key" data-key="4">4</button>
+      <button class="key" data-key="5">5</button>
+      <button class="key" data-key="6">6</button>
+      <button class="key" data-key="7">7</button>
+      <button class="key" data-key="8">8</button>
+      <button class="key" data-key="9">9</button>
+      <button class="key key-clear" data-key="clear">C</button>
+      <button class="key" data-key="0">0</button>
+      <button class="key key-back" data-key="back">⌫</button>
+    </div>
+    <div class="keypad-actions">
+      <button id="keypad-cancel" class="action-btn cancel">Cancel</button>
+      <button id="keypad-confirm" class="action-btn confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
