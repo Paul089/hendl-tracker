@@ -41,13 +41,13 @@
 
 <main id="main-screen">
   <div class="buttons">
-    <button class="animal-btn hendl" data-type="hendl" data-label="Hendl">
+    <button class="animal-btn hendl" data-type="hendl" data-label="Hendlspieße">
       <span class="emoji">🐔</span>
-      <span class="label">Hendl</span>
+      <span class="label">Hendlspieße</span>
     </button>
-    <button class="animal-btn ente" data-type="ente" data-label="Ente">
+    <button class="animal-btn ente" data-type="ente" data-label="Entenspieße">
       <span class="emoji">🦆</span>
-      <span class="label">Ente</span>
+      <span class="label">Entenspieße</span>
     </button>
   </div>
 
@@ -55,14 +55,16 @@
     <div class="summary-card">
       <span class="summary-emoji">🐔</span>
       <span id="total-hendl" class="summary-total">0</span>
-      <span class="summary-label">heute</span>
+      <span class="summary-label">aktuell</span>
     </div>
     <div class="summary-card">
       <span class="summary-emoji">🦆</span>
       <span id="total-ente" class="summary-total">0</span>
-      <span class="summary-label">heute</span>
+      <span class="summary-label">aktuell</span>
     </div>
   </section>
+
+  <button id="graph-open" class="graph-open-btn" aria-label="Grafik anzeigen">📊</button>
 
   <div id="sync-status" class="sync-status">✓ Synced to Sheet</div>
 
@@ -76,7 +78,7 @@
   <div class="keypad-panel">
     <div class="keypad-header">
       <span id="keypad-emoji" class="keypad-emoji"></span>
-      <span id="keypad-title">Hendl</span>
+      <span id="keypad-title">Hendlspieße</span>
     </div>
     <div id="keypad-display" class="keypad-display">0</div>
     <div class="keypad-grid">
@@ -101,6 +103,26 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
+
+<div id="graph-overlay" class="overlay hidden">
+  <div class="graph-panel">
+    <div class="graph-header">
+      <div class="graph-toggle">
+        <button class="toggle-btn active" data-graph-type="hendl">🐔 Hendlspieße</button>
+        <button class="toggle-btn" data-graph-type="ente">🦆 Entenspieße</button>
+      </div>
+      <button id="graph-close" class="graph-close" aria-label="Schließen">✕</button>
+    </div>
+    <div class="graph-canvas-wrap">
+      <canvas id="graph-canvas"></canvas>
+    </div>
+    <div class="graph-legend">
+      <span class="legend-item"><span class="legend-swatch actual"></span>Heute</span>
+      <span class="legend-item"><span class="legend-swatch reference"></span>Durchschnitt (Wochentag)</span>
+    </div>
+    <div id="graph-status" class="graph-status"></div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

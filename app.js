@@ -34,6 +34,11 @@ const els = {
   recentList: document.getElementById("recent-list"),
   toast: document.getElementById("toast"),
   syncStatus: document.getElementById("sync-status"),
+  graphOpen: document.getElementById("graph-open"),
+  graphOverlay: document.getElementById("graph-overlay"),
+  graphClose: document.getElementById("graph-close"),
+  graphCanvas: document.getElementById("graph-canvas"),
+  graphStatus: document.getElementById("graph-status"),
 };
 
 // ---- PIN lock ----------------------------------------------------------
@@ -128,11 +133,15 @@ function checkDayRollover() {
   renderSummary();
 }
 
+// Each entry is a live reading of how many skewers are currently on the
+// grill (not an addition), so the summary shows the most recent reading
+// per type rather than a sum. Entries are always appended chronologically,
+// so the last one seen for a type is the latest.
 function renderSummary() {
-  const totals = { hendl: 0, ente: 0 };
-  for (const e of entries) totals[e.type] += e.quantity;
-  els.totalHendl.textContent = totals.hendl;
-  els.totalEnte.textContent = totals.ente;
+  const current = { hendl: 0, ente: 0 };
+  for (const e of entries) current[e.type] = e.quantity;
+  els.totalHendl.textContent = current.hendl;
+  els.totalEnte.textContent = current.ente;
 
   const pendingCount = entries.filter((e) => !e.synced).length + pendingDeletes.length;
   if (pendingCount === 0) {
@@ -157,7 +166,7 @@ function renderSummary() {
       const confirming = e.id === confirmingDeleteId;
       li.innerHTML = `
         <span class="entry-info">
-          <span>${EMOJI[e.type]} ${e.quantity} ${e.type}${e.synced ? "" : " <span class=\"unsynced-dot\" title=\"Not yet synced\"></span>"}</span>
+          <span>${EMOJI[e.type]} ${e.quantity} aktuell${e.synced ? "" : " <span class=\"unsynced-dot\" title=\"Not yet synced\"></span>"}</span>
           <span class="entry-time">${time}</span>
         </span>
         <button class="delete-entry${confirming ? " confirming" : ""}" aria-label="${confirming ? "Confirm delete" : "Delete entry"}" data-id="${e.id}">${confirming ? "Confirm?" : "✕"}</button>
@@ -237,7 +246,7 @@ els.keypadConfirm.addEventListener("click", () => {
   saveEntries(entries);
   renderSummary();
   closeKeypad();
-  showToast(`Logged ${quantity} ${entry.type} ✓`);
+  showToast(`${EMOJI[entry.type]} ${quantity} aktuell ✓`);
 
   flushQueue();
 });
@@ -335,6 +344,193 @@ async function flushQueue() {
 
 window.addEventListener("online", flushQueue);
 setInterval(flushQueue, SYNC_INTERVAL_MS);
+
+// ---- Comparison graph ---------------------------------------------------
+// Shows today's current-amount readings against a historical average for
+// today's weekday, so the pit master can spot "we're behind where we
+// usually are by now" and hang more in time. Purely a nice-to-have: any
+// failure here (offline, no Referenz tab yet) must never affect logging.
+const REFERENCE_CACHE_KEY = "grillTracker.referenceCache";
+const WEEKDAYS = [
+  "Sonntag", "Montag", "Dienstag", "Mittwoch",
+  "Donnerstag", "Freitag", "Samstag",
+];
+const TYPE_COLOR = { hendl: "#f4a13a", ente: "#4a90c4" };
+
+let graphType = "hendl";
+let graphReferenceRows = null;
+
+function todayWeekday() {
+  return WEEKDAYS[new Date().getDay()];
+}
+
+function timeToMinutes(t) {
+  const [h, m] = String(t).split(":").map(Number);
+  return h * 60 + m;
+}
+
+async function fetchReference() {
+  const weekday = todayWeekday();
+  const cacheKey = `${todayKey()}|${weekday}`;
+
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?weekday=${encodeURIComponent(weekday)}`);
+    if (!res.ok) throw new Error("bad response");
+    const rows = await res.json();
+    localStorage.setItem(REFERENCE_CACHE_KEY, JSON.stringify({ key: cacheKey, rows }));
+    return rows;
+  } catch {
+    try {
+      const cached = JSON.parse(localStorage.getItem(REFERENCE_CACHE_KEY) || "null");
+      if (cached && cached.key === cacheKey) return cached.rows;
+    } catch {
+      // ignore corrupt cache
+    }
+    return null;
+  }
+}
+
+function seriesFromEntries(type) {
+  return entries
+    .filter((e) => e.type === type)
+    .map((e) => {
+      const d = new Date(e.timestamp);
+      return { minutes: d.getHours() * 60 + d.getMinutes(), value: e.quantity };
+    })
+    .sort((a, b) => a.minutes - b.minutes);
+}
+
+function seriesFromReference(type) {
+  return (graphReferenceRows || [])
+    .map((r) => ({ minutes: timeToMinutes(r.time), value: r[type] }))
+    .filter((r) => Number.isFinite(r.minutes) && Number.isFinite(r.value))
+    .sort((a, b) => a.minutes - b.minutes);
+}
+
+function renderGraph() {
+  drawChart(els.graphCanvas, seriesFromReference(graphType), seriesFromEntries(graphType), graphType);
+}
+
+function drawChart(canvas, referenceSeries, actualSeries, type) {
+  const wrap = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  if (w === 0 || h === 0) return;
+
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const allPoints = [...referenceSeries, ...actualSeries];
+  if (allPoints.length === 0) {
+    ctx.fillStyle = "rgba(245,245,245,0.5)";
+    ctx.font = "14px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Noch keine Daten", w / 2, h / 2);
+    return;
+  }
+
+  const pad = { top: 16, right: 16, bottom: 26, left: 32 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  let minX = Math.min(...allPoints.map((p) => p.minutes));
+  let maxX = Math.max(...allPoints.map((p) => p.minutes));
+  if (minX === maxX) {
+    minX -= 30;
+    maxX += 30;
+  }
+  const maxY = Math.max(10, ...allPoints.map((p) => p.value)) * 1.15;
+
+  const xPos = (m) => pad.left + ((m - minX) / (maxX - minX)) * plotW;
+  const yPos = (v) => pad.top + plotH - (v / maxY) * plotH;
+
+  ctx.strokeStyle = "rgba(245,245,245,0.12)";
+  ctx.fillStyle = "rgba(245,245,245,0.5)";
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.lineWidth = 1;
+  ctx.textAlign = "right";
+  const gridLines = 4;
+  for (let i = 0; i <= gridLines; i++) {
+    const v = (maxY / gridLines) * i;
+    const y = yPos(v);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(w - pad.right, y);
+    ctx.stroke();
+    ctx.fillText(String(Math.round(v)), pad.left - 6, y + 4);
+  }
+
+  ctx.textAlign = "center";
+  [minX, (minX + maxX) / 2, maxX].forEach((m) => {
+    const hh = String(Math.floor(m / 60)).padStart(2, "0");
+    const mm = String(Math.round(m % 60)).padStart(2, "0");
+    ctx.fillText(`${hh}:${mm}`, xPos(m), h - 8);
+  });
+
+  function drawLine(series, color, dashed) {
+    if (series.length === 0) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash(dashed ? [6, 5] : []);
+    series.forEach((p, i) => {
+      const x = xPos(p.minutes);
+      const y = yPos(p.value);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = color;
+    series.forEach((p) => {
+      ctx.beginPath();
+      ctx.arc(xPos(p.minutes), yPos(p.value), 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  drawLine(referenceSeries, "rgba(245,245,245,0.45)", true);
+  drawLine(actualSeries, TYPE_COLOR[type], false);
+}
+
+async function openGraph() {
+  els.graphOverlay.classList.remove("hidden");
+  els.graphStatus.textContent = "Lade Referenzdaten…";
+  renderGraph();
+
+  graphReferenceRows = await fetchReference();
+  els.graphStatus.textContent = graphReferenceRows ? "" : "Keine Referenzdaten verfügbar";
+  renderGraph();
+}
+
+function closeGraph() {
+  els.graphOverlay.classList.add("hidden");
+}
+
+els.graphOpen.addEventListener("click", openGraph);
+els.graphClose.addEventListener("click", closeGraph);
+els.graphOverlay.addEventListener("click", (e) => {
+  if (e.target === els.graphOverlay) closeGraph();
+});
+
+document.querySelectorAll(".toggle-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    graphType = btn.dataset.graphType;
+    document.querySelectorAll(".toggle-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    renderGraph();
+  });
+});
+
+window.addEventListener("resize", () => {
+  if (!els.graphOverlay.classList.contains("hidden")) renderGraph();
+});
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") checkDayRollover();

@@ -3,7 +3,7 @@
 // files when online, and only falls back to the cached copy if the
 // network request fails — so a new deploy shows up immediately instead
 // of being stuck behind a stale cache.
-const CACHE_NAME = "grill-tracker-v2";
+const CACHE_NAME = "grill-tracker-v3";
 const ASSETS = [
   "./",
   "./index.html",

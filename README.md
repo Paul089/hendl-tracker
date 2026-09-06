@@ -1,8 +1,10 @@
 # Grill Tracker
 
-A one-screen app for logging how many chicken and duck skewers go on the
-grill, with a timestamp, straight into a Google Sheet. Built for a tablet
-or phone at a festival stand — two big buttons, a number pad, done.
+A one-screen app for logging how many chicken and duck skewers (Hendlspieße /
+Entenspieße) are **currently on the grill**, with a timestamp, straight into a
+Google Sheet. Built for a tablet or phone at a festival stand — two big
+buttons, a number pad, done. A comparison graph shows today's readings against
+a historical weekday average, to help anticipate demand before you run low.
 
 ## 1. Create the Google Sheet + backend (one-time setup)
 
@@ -26,7 +28,9 @@ or phone at a festival stand — two big buttons, a number pad, done.
 Every time you log or delete an entry, a row (Date, Time, Type,
 Quantity, ID) is added to or removed from a "Log" sheet in that
 spreadsheet. The ID column is an internal reference the app uses to
-find the right row — you can ignore it.
+find the right row — you can ignore it. "Quantity" here means the
+current count on the grill at that moment, not an amount added — see
+"Using it" below.
 
 **Robustness:** the app keeps every add/delete in a local queue and
 retries automatically (on load, when the connection comes back, and
@@ -76,13 +80,46 @@ Have your boss do this once, on his own device:
 
 - On first open (per device), enter the **PIN: `1855`**. It's remembered
   after that, so it only needs entering once per phone/tablet.
-- Tap **Hendl** or **Ente**.
-- Type the quantity on the number pad (e.g. `20`).
+- Tap **Hendlspieße** or **Entenspieße**.
+- Type how many skewers are **currently hanging on the grill right now**
+  (not how many you just added — e.g. if 15 were up and you hang 20 more
+  while also pulling 10 off, enter `25`, the new total on the grill).
 - Tap **Confirm**. A row is saved to the Google Sheet with the current
-  date and time, and the on-screen "heute" totals update.
+  date and time, and the on-screen "aktuell" figure updates to that
+  number.
 - Made a mistake? Tap the **✕** next to the entry in the "Letzte
   Einträge" list, confirm, and it's removed from both the app and the
   Google Sheet.
+- Overall sold totals for the day aren't tracked by this app — that
+  comes from the point-of-sale system. This app is only about the live
+  count on the grill, to help judge when to hang more.
+
+## Comparison graph
+
+Tap the **📊** button (top-right) to see today's readings plotted against
+a historical average for today's weekday — e.g. it's 13:30 on a Saturday,
+you have 20 up, but Saturdays usually have 40 by 14:00, which is a signal
+to hang more now.
+
+The average comes from a **"Referenz"** sheet tab (created automatically,
+empty, the first time the app tries to read it) with columns:
+
+| Wochentag | Zeit  | Hendlspieße | Entenspieße |
+|-----------|-------|-------------|-------------|
+| Samstag   | 13:00 | 25          | 8           |
+| Samstag   | 14:00 | 40          | 12          |
+| Samstag   | 15:00 | 38          | 15          |
+
+Fill in as many rows as you like, for whichever weekdays/times you have
+historical data for — any granularity works, the graph just plots
+whatever rows match today's weekday, sorted by time. Until it's filled
+in, the graph still shows today's actual readings, just with nothing to
+compare against.
+
+**Note:** reading this tab requires the Apps Script's `doGet` function,
+added alongside the "Referenz" tab support — if you deployed the Apps
+Script before this feature existed, redeploy it (see "Notes" below)
+for the graph to be able to fetch the reference data.
 
 ## Access control
 

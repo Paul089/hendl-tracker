@@ -18,6 +18,52 @@ const SHEET_NAME = "Log";
 // Columns: Date | Time | Type | Quantity | ID
 const ID_COLUMN = 5;
 
+const REFERENCE_SHEET_NAME = "Referenz";
+// Columns: Wochentag | Zeit | Hendlspieße | Entenspieße
+// One row per time-of-day with the historical average current-on-grill
+// count for that weekday, filled in by hand. Read (GET) by the app's
+// comparison graph, filtered to today's weekday.
+
+function doGet(e) {
+  const weekday = ((e.parameter && e.parameter.weekday) || "").trim();
+  const sheet = getReferenceSheet_();
+  const lastRow = sheet.getLastRow();
+  const rows = [];
+
+  if (lastRow >= 2) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    for (const [rowWeekday, time, hendl, ente] of values) {
+      if (weekday && String(rowWeekday).trim() !== weekday) continue;
+      rows.push({
+        time: formatReferenceTime_(time),
+        hendl: hendl === "" ? null : Number(hendl),
+        ente: ente === "" ? null : Number(ente),
+      });
+    }
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify(rows))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function formatReferenceTime_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "HH:mm");
+  }
+  return String(value);
+}
+
+function getReferenceSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(REFERENCE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(REFERENCE_SHEET_NAME);
+    sheet.appendRow(["Wochentag", "Zeit", "Hendlspieße", "Entenspieße"]);
+  }
+  return sheet;
+}
+
 function doPost(e) {
   // Serialize concurrent requests so two near-simultaneous taps can't
   // both read the same "last row" and clobber each other.
