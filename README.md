@@ -97,12 +97,16 @@ Have your boss do this once, on his own device:
 ## Comparison graph
 
 Tap the **📊** button (top-right) to see today's readings plotted against
-a historical average for today's weekday — e.g. it's 13:30 on a Saturday,
+a comparison line for today's weekday — e.g. it's 13:30 on a Saturday,
 you have 20 up, but Saturdays usually have 40 by 14:00, which is a signal
-to hang more now.
+to hang more now. A picker under the 🐔/🦆 toggle lets you choose what
+that comparison line shows: the overall **"Durchschnitt"** average, or
+one specific past **year**.
 
-The average comes from a **"Referenz"** sheet tab (created automatically,
-empty, the first time the app tries to read it) with columns:
+### Durchschnitt (average)
+
+Comes from a **"Referenz"** sheet tab (created automatically, empty, the
+first time the app tries to read it) with columns:
 
 | Wochentag | Zeit  | Hendlspieße | Entenspieße |
 |-----------|-------|-------------|-------------|
@@ -112,14 +116,41 @@ empty, the first time the app tries to read it) with columns:
 
 Fill in as many rows as you like, for whichever weekdays/times you have
 historical data for — any granularity works, the graph just plots
-whatever rows match today's weekday, sorted by time. Until it's filled
-in, the graph still shows today's actual readings, just with nothing to
-compare against.
+whatever rows match today's weekday, sorted by time.
 
-**Note:** reading this tab requires the Apps Script's `doGet` function,
-added alongside the "Referenz" tab support — if you deployed the Apps
-Script before this feature existed, redeploy it (see "Notes" below)
-for the graph to be able to fetch the reference data.
+### Specific years
+
+Add a sheet tab named exactly the year, e.g. **"2024"**, with columns:
+
+| Date       | Time  | Type  | Quantity |
+|------------|-------|-------|----------|
+| 2024-08-17 | 13:05 | hendl | 22       |
+| 2024-08-17 | 13:40 | ente  | 6        |
+| 2024-08-17 | 14:10 | hendl | 38       |
+
+Same idea as the "Log" sheet, minus the ID column — one row per actual
+reading, `Type` is `hendl` or `ente`. Any sheet whose name is a
+4-digit year is picked up automatically as a picker option; no code
+change needed to add a new one. The app filters each year's rows to
+whichever weekday matches today (computed from `Date`) before plotting,
+same as the Durchschnitt average.
+
+**Building up years over time:** once a season has been run through the
+app, open the spreadsheet and use the **Grill Tracker -> Season
+abschließen: Log archivieren** menu (added by the Apps Script). It asks
+which year to file the current "Log" contents under, copies those rows
+into a new (or existing) year sheet in the format above, and optionally
+clears "Log" so the next season starts empty — "Log" itself keeps
+meaning exactly what it means today, the current season's live data.
+For years before this app existed, just type the rows in by hand.
+
+Until any of this is filled in, the graph still shows today's actual
+readings, just with nothing to compare against.
+
+**Note:** reading these tabs requires the Apps Script's `doGet`/`onOpen`
+functions — if you deployed the Apps Script before this feature existed,
+redeploy it (see "Notes" below) for the graph and the archive menu to
+work.
 
 ## Access control
 

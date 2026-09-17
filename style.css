@@ -385,10 +385,15 @@ html, body {
 
 .graph-toggle {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   background: #262b36;
   border-radius: 12px;
   padding: 4px;
+}
+
+.source-toggle:empty {
+  display: none;
 }
 
 .toggle-btn {

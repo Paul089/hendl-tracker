@@ -39,6 +39,8 @@ const els = {
   graphClose: document.getElementById("graph-close"),
   graphCanvas: document.getElementById("graph-canvas"),
   graphStatus: document.getElementById("graph-status"),
+  graphSourceToggle: document.getElementById("graph-source-toggle"),
+  legendReferenceLabel: document.getElementById("legend-reference-label"),
 };
 
 // ---- PIN lock ----------------------------------------------------------
@@ -358,6 +360,8 @@ const WEEKDAYS = [
 const TYPE_COLOR = { hendl: "#f4a13a", ente: "#4a90c4" };
 
 let graphType = "hendl";
+let graphSource = "average";
+let graphYears = [];
 let graphReferenceRows = null;
 
 function todayWeekday() {
@@ -369,12 +373,16 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
-async function fetchReference() {
+async function fetchReference(source) {
   const weekday = todayWeekday();
-  const cacheKey = `${todayKey()}|${weekday}`;
+  const cacheKey = `${todayKey()}|${weekday}|${source}`;
+  const url =
+    source === "average"
+      ? `${CONFIG.scriptUrl}?weekday=${encodeURIComponent(weekday)}`
+      : `${CONFIG.scriptUrl}?source=${encodeURIComponent(source)}&weekday=${encodeURIComponent(weekday)}`;
 
   try {
-    const res = await fetch(`${CONFIG.scriptUrl}?weekday=${encodeURIComponent(weekday)}`);
+    const res = await fetch(url);
     if (!res.ok) throw new Error("bad response");
     const rows = await res.json();
     localStorage.setItem(REFERENCE_CACHE_KEY, JSON.stringify({ key: cacheKey, rows }));
@@ -387,6 +395,27 @@ async function fetchReference() {
       // ignore corrupt cache
     }
     return null;
+  }
+}
+
+// Years are auto-discovered from the spreadsheet (any tab named as a
+// 4-digit year), cached so a flaky request while opening the graph
+// doesn't just leave the picker showing only "Durchschnitt".
+const YEARS_CACHE_KEY = "grillTracker.yearsCache";
+
+async function fetchYearList() {
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?years=1`);
+    if (!res.ok) throw new Error("bad response");
+    const years = await res.json();
+    localStorage.setItem(YEARS_CACHE_KEY, JSON.stringify(years));
+    return years;
+  } catch {
+    try {
+      return JSON.parse(localStorage.getItem(YEARS_CACHE_KEY) || "[]");
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -407,8 +436,23 @@ function seriesFromReference(type) {
     .sort((a, b) => a.minutes - b.minutes);
 }
 
+// Year sheets return flat {time, type, quantity} rows (one type per row,
+// unlike Referenz's wide format) — same shape as local entries, so this
+// mirrors seriesFromEntries.
+function seriesFromYearRows(type) {
+  return (graphReferenceRows || [])
+    .filter((r) => r.type === type)
+    .map((r) => ({ minutes: timeToMinutes(r.time), value: r.quantity }))
+    .filter((r) => Number.isFinite(r.minutes) && Number.isFinite(r.value))
+    .sort((a, b) => a.minutes - b.minutes);
+}
+
+function buildReferenceSeries(type) {
+  return graphSource === "average" ? seriesFromReference(type) : seriesFromYearRows(type);
+}
+
 function renderGraph() {
-  drawChart(els.graphCanvas, seriesFromReference(graphType), seriesFromEntries(graphType), graphType);
+  drawChart(els.graphCanvas, buildReferenceSeries(graphType), seriesFromEntries(graphType), graphType);
 }
 
 function drawChart(canvas, referenceSeries, actualSeries, type) {
@@ -500,14 +544,52 @@ function drawChart(canvas, referenceSeries, actualSeries, type) {
   drawLine(actualSeries, TYPE_COLOR[type], false);
 }
 
-async function openGraph() {
-  els.graphOverlay.classList.remove("hidden");
+function updateLegendLabel() {
+  els.legendReferenceLabel.textContent =
+    graphSource === "average" ? "Durchschnitt (Wochentag)" : `${graphSource} (Wochentag)`;
+}
+
+function renderSourceToggle() {
+  els.graphSourceToggle.innerHTML = "";
+
+  const makeBtn = (source, label) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toggle-btn" + (source === graphSource ? " active" : "");
+    btn.textContent = label;
+    btn.dataset.graphSource = source;
+    btn.addEventListener("click", async () => {
+      if (source === graphSource) return;
+      graphSource = source;
+      renderSourceToggle();
+      updateLegendLabel();
+      await loadReference();
+    });
+    return btn;
+  };
+
+  els.graphSourceToggle.appendChild(makeBtn("average", "Durchschnitt"));
+  graphYears.forEach((year) => els.graphSourceToggle.appendChild(makeBtn(year, year)));
+}
+
+async function loadReference() {
   els.graphStatus.textContent = "Lade Referenzdaten…";
   renderGraph();
 
-  graphReferenceRows = await fetchReference();
-  els.graphStatus.textContent = graphReferenceRows ? "" : "Keine Referenzdaten verfügbar";
+  graphReferenceRows = await fetchReference(graphSource);
+  els.graphStatus.textContent = graphReferenceRows && graphReferenceRows.length ? "" : "Keine Referenzdaten verfügbar";
   renderGraph();
+}
+
+async function openGraph() {
+  els.graphOverlay.classList.remove("hidden");
+  updateLegendLabel();
+  renderGraph();
+
+  graphYears = await fetchYearList();
+  renderSourceToggle();
+
+  await loadReference();
 }
 
 function closeGraph() {
@@ -520,10 +602,10 @@ els.graphOverlay.addEventListener("click", (e) => {
   if (e.target === els.graphOverlay) closeGraph();
 });
 
-document.querySelectorAll(".toggle-btn").forEach((btn) => {
+document.querySelectorAll(".graph-toggle.type-toggle .toggle-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     graphType = btn.dataset.graphType;
-    document.querySelectorAll(".toggle-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".graph-toggle.type-toggle .toggle-btn").forEach((b) => b.classList.toggle("active", b === btn));
     renderGraph();
   });
 });

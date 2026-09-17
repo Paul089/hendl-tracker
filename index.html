@@ -107,18 +107,19 @@
 <div id="graph-overlay" class="overlay hidden">
   <div class="graph-panel">
     <div class="graph-header">
-      <div class="graph-toggle">
+      <div class="graph-toggle type-toggle">
         <button class="toggle-btn active" data-graph-type="hendl">🐔 Hendlspieße</button>
         <button class="toggle-btn" data-graph-type="ente">🦆 Entenspieße</button>
       </div>
       <button id="graph-close" class="graph-close" aria-label="Schließen">✕</button>
     </div>
+    <div id="graph-source-toggle" class="graph-toggle source-toggle"></div>
     <div class="graph-canvas-wrap">
       <canvas id="graph-canvas"></canvas>
     </div>
     <div class="graph-legend">
       <span class="legend-item"><span class="legend-swatch actual"></span>Heute</span>
-      <span class="legend-item"><span class="legend-swatch reference"></span>Durchschnitt (Wochentag)</span>
+      <span class="legend-item"><span class="legend-swatch reference"></span><span id="legend-reference-label">Durchschnitt (Wochentag)</span></span>
     </div>
     <div id="graph-status" class="graph-status"></div>
   </div>

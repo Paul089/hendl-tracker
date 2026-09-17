@@ -24,8 +24,25 @@ const REFERENCE_SHEET_NAME = "Referenz";
 // count for that weekday, filled in by hand. Read (GET) by the app's
 // comparison graph, filtered to today's weekday.
 
+const YEAR_SHEET_PATTERN = /^\d{4}$/;
+// A sheet named e.g. "2024" holds that season's actual readings, same
+// shape as "Log" minus the ID column: Date | Time | Type | Quantity.
+// Filled in by hand for seasons before this app existed, or produced by
+// the "Season abschließen" menu action (see archiveLogToYearSheet_)
+// at the end of a season that used the live app.
+
 function doGet(e) {
-  const weekday = ((e.parameter && e.parameter.weekday) || "").trim();
+  const params = (e && e.parameter) || {};
+
+  if (params.years) {
+    return jsonOutput_(getYearSheetNames_());
+  }
+
+  if (params.source && YEAR_SHEET_PATTERN.test(params.source)) {
+    return jsonOutput_(getYearSheetRows_(params.source, (params.weekday || "").trim()));
+  }
+
+  const weekday = (params.weekday || "").trim();
   const sheet = getReferenceSheet_();
   const lastRow = sheet.getLastRow();
   const rows = [];
@@ -42,9 +59,61 @@ function doGet(e) {
     }
   }
 
+  return jsonOutput_(rows);
+}
+
+function jsonOutput_(value) {
   return ContentService
-    .createTextOutput(JSON.stringify(rows))
+    .createTextOutput(JSON.stringify(value))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Returns names of all sheet tabs that look like a year ("2024", "2025",
+// ...), sorted newest first, so the app can build its year picker without
+// any hardcoded list.
+function getYearSheetNames_() {
+  return SpreadsheetApp.getActiveSpreadsheet()
+    .getSheets()
+    .map((s) => s.getName())
+    .filter((name) => YEAR_SHEET_PATTERN.test(name))
+    .sort((a, b) => Number(b) - Number(a));
+}
+
+// Reads a year sheet (Date | Time | Type | Quantity) and returns a flat
+// list of {time, type, quantity}, optionally filtered to rows whose Date
+// falls on the given weekday (computed here, since year sheets store a
+// real date rather than a weekday name like Referenz does).
+function getYearSheetRows_(year, weekday) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(year);
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const rows = [];
+  for (const [date, time, type, quantity] of values) {
+    if (!type || quantity === "") continue;
+    if (weekday && rowWeekday_(date) !== weekday) continue;
+    rows.push({
+      time: formatReferenceTime_(time),
+      type: String(type).trim(),
+      quantity: Number(quantity),
+    });
+  }
+  rows.sort((a, b) => a.time.localeCompare(b.time));
+  return rows;
+}
+
+const WEEKDAY_NAMES_ = [
+  "Sonntag", "Montag", "Dienstag", "Mittwoch",
+  "Donnerstag", "Freitag", "Samstag",
+];
+
+function rowWeekday_(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return "";
+  return WEEKDAY_NAMES_[d.getDay()];
 }
 
 function formatReferenceTime_(value) {
@@ -124,4 +193,84 @@ function getLogSheet_() {
     sheet.appendRow(["Date", "Time", "Type", "Quantity", "ID"]);
   }
   return sheet;
+}
+
+// ---- Season archiving (run by hand from the Sheets UI, never by the web
+// app) -------------------------------------------------------------
+// Copies this season's Log rows into a new year sheet (Date, Time, Type,
+// Quantity, ID column dropped) so they become available in the app's
+// year-comparison picker next season, then optionally clears Log so it
+// starts the next season empty.
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("Grill Tracker")
+    .addItem("Season abschliessen: Log archivieren", "archiveLogToYearSheet_")
+    .addToUi();
+}
+
+function archiveLogToYearSheet_() {
+  const ui = SpreadsheetApp.getUi();
+  const logSheet = getLogSheet_();
+  const lastRow = logSheet.getLastRow();
+
+  if (lastRow < 2) {
+    ui.alert("Log enthaelt keine Eintraege zum Archivieren.");
+    return;
+  }
+
+  const values = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const defaultYear = guessYear_(values) || String(new Date().getFullYear());
+
+  const yearResponse = ui.prompt(
+    "Season abschliessen",
+    "Log-Daten in welches Jahr archivieren? (" + values.length + " Zeilen, Vorschlag: " + defaultYear + ")",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (yearResponse.getSelectedButton() !== ui.Button.OK) return;
+
+  const year = (yearResponse.getResponseText() || defaultYear).trim() || defaultYear;
+  if (!YEAR_SHEET_PATTERN.test(year)) {
+    ui.alert("\"" + year + "\" ist keine gueltige vierstellige Jahreszahl.");
+    return;
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let yearSheet = ss.getSheetByName(year);
+
+  if (yearSheet) {
+    const overwrite = ui.alert(
+      "Jahr existiert bereits",
+      "Ein Tab \"" + year + "\" existiert schon. Log-Daten anhaengen?",
+      ui.ButtonSet.YES_NO
+    );
+    if (overwrite !== ui.Button.YES) return;
+  } else {
+    yearSheet = ss.insertSheet(year);
+    yearSheet.appendRow(["Date", "Time", "Type", "Quantity"]);
+  }
+
+  yearSheet.getRange(yearSheet.getLastRow() + 1, 1, values.length, 4).setValues(values);
+
+  const clearResponse = ui.alert(
+    "Log leeren?",
+    "Log-Eintraege jetzt loeschen, um die naechste Season leer zu starten?",
+    ui.ButtonSet.YES_NO
+  );
+  if (clearResponse === ui.Button.YES) {
+    logSheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+  }
+
+  ui.alert(values.length + " Zeilen nach \"" + year + "\" archiviert.");
+}
+
+// Best-effort guess at the season's year from the Log rows' Date column,
+// used only to pre-fill the archive prompt.
+function guessYear_(values) {
+  for (const row of values) {
+    const date = row[0];
+    const d = date instanceof Date ? date : new Date(date);
+    if (!isNaN(d.getTime())) return String(d.getFullYear());
+  }
+  return "";
 }
