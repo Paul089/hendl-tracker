@@ -39,7 +39,14 @@ function doGet(e) {
   }
 
   if (params.source && YEAR_SHEET_PATTERN.test(params.source)) {
-    return jsonOutput_(getYearSheetRows_(params.source, (params.weekday || "").trim()));
+    if (params.dates) {
+      return jsonOutput_(getYearSheetDates_(params.source));
+    }
+    return jsonOutput_(getYearSheetRows_(
+      params.source,
+      (params.weekday || "").trim(),
+      (params.date || "").trim()
+    ));
   }
 
   const weekday = (params.weekday || "").trim();
@@ -79,11 +86,11 @@ function getYearSheetNames_() {
     .sort((a, b) => Number(b) - Number(a));
 }
 
-// Reads a year sheet (Date | Time | Type | Quantity) and returns a flat
-// list of {time, type, quantity}, optionally filtered to rows whose Date
-// falls on the given weekday (computed here, since year sheets store a
-// real date rather than a weekday name like Referenz does).
-function getYearSheetRows_(year, weekday) {
+// Reads a year sheet (Date | Time | Type | Quantity) into {dateStr,
+// weekday, time, type, quantity} rows — the shared building block behind
+// getYearSheetRows_ (a specific date, or weekday-matched, or everything)
+// and getYearSheetDates_ (the distinct dates available to pick from).
+function getYearSheetRawRows_(year) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(year);
   if (!sheet) return [];
 
@@ -94,15 +101,51 @@ function getYearSheetRows_(year, weekday) {
   const rows = [];
   for (const [date, time, type, quantity] of values) {
     if (!type || quantity === "") continue;
-    if (weekday && rowWeekday_(date) !== weekday) continue;
     rows.push({
+      dateStr: formatDateStr_(date),
+      weekday: rowWeekday_(date),
       time: formatReferenceTime_(time),
       type: String(type).trim(),
       quantity: Number(quantity),
     });
   }
-  rows.sort((a, b) => a.time.localeCompare(b.time));
   return rows;
+}
+
+// Returns rows for a year sheet as {time, type, quantity}, filtered to an
+// exact date if given, else to a matching weekday if given, else
+// everything (in that priority order) — sorted by time.
+function getYearSheetRows_(year, weekday, date) {
+  const rows = getYearSheetRawRows_(year).filter((r) => {
+    if (date) return r.dateStr === date;
+    if (weekday) return r.weekday === weekday;
+    return true;
+  });
+  return rows
+    .map(({ time, type, quantity }) => ({ time, type, quantity }))
+    .sort((a, b) => a.time.localeCompare(b.time));
+}
+
+// Returns the distinct dates (yyyy-MM-dd) present in a year sheet, sorted
+// ascending, so the app can offer "compare against this exact day"
+// instead of only the weekday-matched default.
+function getYearSheetDates_(year) {
+  const seen = new Set();
+  const dates = [];
+  for (const r of getYearSheetRawRows_(year)) {
+    if (!seen.has(r.dateStr)) {
+      seen.add(r.dateStr);
+      dates.push(r.dateStr);
+    }
+  }
+  return dates.sort();
+}
+
+function formatDateStr_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return String(value).trim();
 }
 
 const WEEKDAY_NAMES_ = [

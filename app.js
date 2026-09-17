@@ -40,6 +40,7 @@ const els = {
   graphCanvas: document.getElementById("graph-canvas"),
   graphStatus: document.getElementById("graph-status"),
   graphSourceToggle: document.getElementById("graph-source-toggle"),
+  graphDateSelect: document.getElementById("graph-date-select"),
   legendReferenceLabel: document.getElementById("legend-reference-label"),
 };
 
@@ -359,9 +360,17 @@ const WEEKDAYS = [
 ];
 const TYPE_COLOR = { hendl: "#f4a13a", ente: "#4a90c4" };
 
+// Selling hours: skewers only go on the grill from 11:00 to 23:00, so the
+// graph always shows that fixed window (never a jumpy range derived from
+// whatever few points happen to exist yet) — and widens automatically,
+// never clips, if a reading ever falls outside it.
+const DAY_START_MIN = 11 * 60;
+const DAY_END_MIN = 23 * 60;
+
 let graphType = "hendl";
 let graphSource = "average";
 let graphYears = [];
+let graphYearDate = "";
 let graphReferenceRows = null;
 
 function todayWeekday() {
@@ -373,13 +382,21 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
-async function fetchReference(source) {
+// source is "average" or a year; date (optional) picks one exact day
+// within that year instead of the weekday-matched default — useful since
+// a past festival's actual weekday shifts from year to year, so "today's
+// weekday" alone won't always land on the right historical day.
+async function fetchReference(source, date) {
   const weekday = todayWeekday();
-  const cacheKey = `${todayKey()}|${weekday}|${source}`;
-  const url =
-    source === "average"
-      ? `${CONFIG.scriptUrl}?weekday=${encodeURIComponent(weekday)}`
-      : `${CONFIG.scriptUrl}?source=${encodeURIComponent(source)}&weekday=${encodeURIComponent(weekday)}`;
+  const cacheKey = `${todayKey()}|${weekday}|${source}|${date || ""}`;
+  let url;
+  if (source === "average") {
+    url = `${CONFIG.scriptUrl}?weekday=${encodeURIComponent(weekday)}`;
+  } else if (date) {
+    url = `${CONFIG.scriptUrl}?source=${encodeURIComponent(source)}&date=${encodeURIComponent(date)}`;
+  } else {
+    url = `${CONFIG.scriptUrl}?source=${encodeURIComponent(source)}&weekday=${encodeURIComponent(weekday)}`;
+  }
 
   try {
     const res = await fetch(url);
@@ -419,6 +436,28 @@ async function fetchYearList() {
   }
 }
 
+// Distinct dates available within one year sheet, so the date picker can
+// offer "this exact day" rather than only the weekday-matched default.
+const YEAR_DATES_CACHE_KEY = "grillTracker.yearDatesCache";
+
+async function fetchYearDates(year) {
+  try {
+    const res = await fetch(`${CONFIG.scriptUrl}?source=${encodeURIComponent(year)}&dates=1`);
+    if (!res.ok) throw new Error("bad response");
+    const dates = await res.json();
+    localStorage.setItem(YEAR_DATES_CACHE_KEY, JSON.stringify({ key: year, dates }));
+    return dates;
+  } catch {
+    try {
+      const cached = JSON.parse(localStorage.getItem(YEAR_DATES_CACHE_KEY) || "null");
+      if (cached && cached.key === year) return cached.dates;
+    } catch {
+      // ignore corrupt cache
+    }
+    return [];
+  }
+}
+
 function seriesFromEntries(type) {
   return entries
     .filter((e) => e.type === type)
@@ -455,6 +494,18 @@ function renderGraph() {
   drawChart(els.graphCanvas, buildReferenceSeries(graphType), seriesFromEntries(graphType), graphType);
 }
 
+// Hour-aligned x-axis ticks across [minX, maxX]: 2h steps for a long span
+// (the normal 11:00-23:00 day), 1h steps for a short one, always including
+// the exact end so a widened domain (an outlier reading) still gets a
+// labeled edge instead of silently trailing off.
+function buildXTicks(minX, maxX) {
+  const stepMin = maxX - minX > 8 * 60 ? 120 : 60;
+  const ticks = [];
+  for (let m = minX; m <= maxX; m += stepMin) ticks.push(m);
+  if (ticks[ticks.length - 1] < maxX) ticks.push(maxX);
+  return ticks;
+}
+
 function drawChart(canvas, referenceSeries, actualSeries, type) {
   const wrap = canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
@@ -470,25 +521,15 @@ function drawChart(canvas, referenceSeries, actualSeries, type) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  const allPoints = [...referenceSeries, ...actualSeries];
-  if (allPoints.length === 0) {
-    ctx.fillStyle = "rgba(245,245,245,0.5)";
-    ctx.font = "14px -apple-system, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Noch keine Daten", w / 2, h / 2);
-    return;
-  }
-
   const pad = { top: 16, right: 16, bottom: 26, left: 32 };
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
 
-  let minX = Math.min(...allPoints.map((p) => p.minutes));
-  let maxX = Math.max(...allPoints.map((p) => p.minutes));
-  if (minX === maxX) {
-    minX -= 30;
-    maxX += 30;
-  }
+  const allPoints = [...referenceSeries, ...actualSeries];
+  // Always at least the 11:00-23:00 selling window; widens (never clips)
+  // if a reading falls outside it, so no data point is ever lost off-chart.
+  const minX = Math.min(DAY_START_MIN, ...allPoints.map((p) => p.minutes));
+  const maxX = Math.max(DAY_END_MIN, ...allPoints.map((p) => p.minutes));
   const maxY = Math.max(10, ...allPoints.map((p) => p.value)) * 1.15;
 
   const xPos = (m) => pad.left + ((m - minX) / (maxX - minX)) * plotW;
@@ -511,11 +552,18 @@ function drawChart(canvas, referenceSeries, actualSeries, type) {
   }
 
   ctx.textAlign = "center";
-  [minX, (minX + maxX) / 2, maxX].forEach((m) => {
+  buildXTicks(minX, maxX).forEach((m) => {
     const hh = String(Math.floor(m / 60)).padStart(2, "0");
     const mm = String(Math.round(m % 60)).padStart(2, "0");
     ctx.fillText(`${hh}:${mm}`, xPos(m), h - 8);
   });
+
+  if (allPoints.length === 0) {
+    ctx.fillStyle = "rgba(245,245,245,0.5)";
+    ctx.font = "14px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Noch keine Daten", pad.left + plotW / 2, pad.top + plotH / 2);
+  }
 
   function drawLine(series, color, dashed) {
     if (series.length === 0) return;
@@ -544,9 +592,24 @@ function drawChart(canvas, referenceSeries, actualSeries, type) {
   drawLine(actualSeries, TYPE_COLOR[type], false);
 }
 
+// Turns "2025-09-18" into "18.09.2025 (Donnerstag)" for display, parsed
+// as a local date (not UTC) so the weekday shown always matches what a
+// human looking at that date would expect.
+function formatDateLabel(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const local = new Date(y, m - 1, d);
+  const weekday = WEEKDAYS[local.getDay()];
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y} (${weekday})`;
+}
+
 function updateLegendLabel() {
-  els.legendReferenceLabel.textContent =
-    graphSource === "average" ? "Durchschnitt (Wochentag)" : `${graphSource} (Wochentag)`;
+  if (graphSource === "average") {
+    els.legendReferenceLabel.textContent = "Durchschnitt (Wochentag)";
+  } else if (graphYearDate) {
+    els.legendReferenceLabel.textContent = formatDateLabel(graphYearDate);
+  } else {
+    els.legendReferenceLabel.textContent = `${graphSource} (Wochentag)`;
+  }
 }
 
 function renderSourceToggle() {
@@ -561,8 +624,10 @@ function renderSourceToggle() {
     btn.addEventListener("click", async () => {
       if (source === graphSource) return;
       graphSource = source;
+      graphYearDate = "";
       renderSourceToggle();
       updateLegendLabel();
+      await updateDateSelect();
       await loadReference();
     });
     return btn;
@@ -572,11 +637,47 @@ function renderSourceToggle() {
   graphYears.forEach((year) => els.graphSourceToggle.appendChild(makeBtn(year, year)));
 }
 
+// A year's real data can span several distinct dates (different festival
+// days across time), and a past date's weekday rarely matches today's —
+// so beyond the weekday-matched default, this lets you pick one exact day
+// within the selected year to compare against.
+async function updateDateSelect() {
+  if (graphSource === "average") {
+    els.graphDateSelect.classList.add("hidden");
+    els.graphDateSelect.innerHTML = "";
+    return;
+  }
+
+  const dates = await fetchYearDates(graphSource);
+
+  els.graphDateSelect.innerHTML = "";
+  const defaultOption = document.createElement("option");
+  defaultOption.value = "";
+  defaultOption.textContent = "Passender Wochentag (automatisch)";
+  els.graphDateSelect.appendChild(defaultOption);
+
+  dates.forEach((dateStr) => {
+    const opt = document.createElement("option");
+    opt.value = dateStr;
+    opt.textContent = formatDateLabel(dateStr);
+    els.graphDateSelect.appendChild(opt);
+  });
+
+  els.graphDateSelect.value = graphYearDate;
+  els.graphDateSelect.classList.toggle("hidden", dates.length === 0);
+}
+
+els.graphDateSelect.addEventListener("change", async () => {
+  graphYearDate = els.graphDateSelect.value;
+  updateLegendLabel();
+  await loadReference();
+});
+
 async function loadReference() {
   els.graphStatus.textContent = "Lade Referenzdaten…";
   renderGraph();
 
-  graphReferenceRows = await fetchReference(graphSource);
+  graphReferenceRows = await fetchReference(graphSource, graphSource === "average" ? undefined : graphYearDate);
   els.graphStatus.textContent = graphReferenceRows && graphReferenceRows.length ? "" : "Keine Referenzdaten verfügbar";
   renderGraph();
 }
@@ -588,6 +689,7 @@ async function openGraph() {
 
   graphYears = await fetchYearList();
   renderSourceToggle();
+  await updateDateSelect();
 
   await loadReference();
 }
