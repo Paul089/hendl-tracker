@@ -2,7 +2,7 @@
 // Paste the Google Apps Script Web App URL here after deploying
 // apps-script/Code.gs (see README.md for step-by-step instructions).
 const CONFIG = {
-  scriptUrl: "https://script.google.com/macros/s/AKfycbx4Iupr99k51a_-sqK5mAF4qmgNp3r1FuEa2XMwPQiisqqQ3IKCcTGjxD5BQ2IEGEo1fA/exec",
+  scriptUrl: "https://script.google.com/macros/s/AKfycbw22Dym7elBpqzKpPEmW5KX6XMg4rnEeLir98fX_Q3spFe_0qKDiZnOljPy9vcwevaAdQ/exec",
 };
 
 const APP_PIN = "1855";
